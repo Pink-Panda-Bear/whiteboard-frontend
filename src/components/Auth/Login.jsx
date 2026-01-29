@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import api from '../../services/api';
+
+// ####################### ORIGINALNI BACKEND #########################
+// import api from '../../services/api';
+
+// ####################### FIREBASE #########################
+import { auth } from '../../services/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 function Login() {
   // Inicijaliziram navigaciju za preusmjeravanje nakon uspješnog logina
@@ -23,19 +29,31 @@ function Login() {
     setLoading(true);       // spinner za učitavanje stranice
 
     try {
+      // ####################### ORIGINALNI BACKEND #########################
       // Šaljem POST zahtjev na backend endpoint '/login'
-      const response = await api.post('/login', formData);
+      // const response = await api.post('/login', formData);
 
-      // ################## POHRANA PODATAKA O KORISNIKU #######################
       // Spremam dobiveni Bearer token i podatke o useru u LocalStorage preglednika
       // To omogućuje da korisnik ostane prijavljen i nakon refresha
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      // localStorage.setItem('token', response.data.token);
+      // localStorage.setItem('user', JSON.stringify(response.data.user));
+
+
+      // ####################### FIREBASE #########################
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
+
+      console.log("Logged in:", user.email);
+      localStorage.setItem('user', JSON.stringify({ uid: user.uid, email: user.email }));
 
       // Šaljem korisnika na glavnu radnu površinu (Dashboard.jsx)
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      // ####################### ORIGINALNI BACKEND #########################
+      // setError(err.response?.data?.message || 'Login failed');
+
+      // ####################### FIREBASE #########################
+      setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
     }

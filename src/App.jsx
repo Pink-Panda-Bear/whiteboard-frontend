@@ -8,7 +8,7 @@ import Whiteboard from './components/Whiteboard/Whiteboard';
 function App() {
   // Provjeri je li user ulogiran:
   const isAuthenticated = () => {
-    return localStorage.getItem('token') !== null;
+    return localStorage.getItem('user') !== null;
   }
 
   // Protected Route wrapper:
