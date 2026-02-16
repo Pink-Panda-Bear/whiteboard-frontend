@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Firebase imports
+// ####################### BACKEND ##########################
+import api from '../../services/api';
+
+// ####################### FIREBASE #########################
 import { auth, db } from '../../services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { 
-  collection, 
-  addDoc, 
-  deleteDoc,
-  doc,
-  query, 
-  where,
-  onSnapshot,
-  getDocs
-} from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, query, where, onSnapshot, getDocs } from 'firebase/firestore';
+
+// ####################### CONFIG ###########################
+import { USE_FIREBASE } from '../../config/apiConfig';
 
 
 function Dashboard() {
@@ -34,41 +31,77 @@ function Dashboard() {
   // ####################### AUTH INITIALIZATION #######################
   useEffect(() => {
     console.log('🔵 Setting up auth listener');
-    
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser?.email || 'No user');
-      
-      if (firebaseUser) {
-        const userData = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName || firebaseUser.email.split('@')[0]
-        };
-        
-        console.log('✅ User authenticated:', userData.email);
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        console.log('❌ No user, clearing state');
-        setUser(null);
-        setBoards([]); // Očisti boards
-        localStorage.removeItem('user');
-        navigate('/login');
-      }
-      
-      setAuthLoading(false); // Auth je gotov (bilo user ili null)
-    });
 
-    return () => {
-      console.log('🔴 Cleaning up auth listener');
-      unsubscribe();
-    };
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
+      console.log('Using Firebase Auth');
+
+      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        console.log('Auth state changed:', firebaseUser?.email || 'No user');
+        
+        if (firebaseUser) {
+          const userData = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName || firebaseUser.email.split('@')[0]
+          };
+          
+          console.log('✅ User authenticated:', userData.email);
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
+        } else {
+          console.log('❌ No user, clearing state');
+          setUser(null);
+          setBoards([]); // Očisti boards
+          localStorage.removeItem('user');
+          navigate('/login');
+        }
+        
+        setAuthLoading(false); // Auth je gotov (bilo user ili null)
+      });
+
+      return () => {
+        console.log('🔴 Cleaning up auth listener');
+        unsubscribe();
+      };
+
+    // ####################### BACKEND ##########################
+    } else {
+      console.log('Using Backend API');
+
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
+
+      fetchBoardsAPI();
+    }
   }, [navigate]);
 
-  // ####################### BOARDS REAL-TIME LISTENER #######################
+  // ####################### FETCH BOARDS (BACKEND) #########################
+  const fetchBoardsAPI = async () => {
+    if (USE_FIREBASE) return;
+
+    try {
+      setLoading(true);
+      const response = await api.get('/boards');
+      setBoards(response.data);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        console.error('❌ Session expired, redirecting to login');
+        navigate('/login');
+      } else {
+        console.error('Error fetching boards:', error);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ####################### FETCH BOARDS (FIREBASE) #######################
   useEffect(() => {
     // Čekaj da auth završi prije setupanja boards listenera
-    if (authLoading) {
+    if (!USE_FIREBASE || authLoading) {
       console.log('⏳ Waiting for auth to complete...');
       return;
     }
@@ -119,20 +152,21 @@ function Dashboard() {
     };
   }, [user?.uid, authLoading]); // Triggera se kad se user ili authLoading promijene
 
-  // ####################### FIREBASE OPERATIONS ###########################
+  // ####################### CREATE BOARD ###########################
   const createBoard = async () => {
     if (!newBoardTitle.trim()) {
       alert('Please enter a board title');
       return;
     }
     
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      alert('You must be logged in');
-      return;
-    }
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert('You must be logged in');
+        return;
+      }
 
-    try {
       console.log('📝 Creating board:', newBoardTitle);
       
       const roomCode = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -151,41 +185,56 @@ function Dashboard() {
       console.log('✅ Board created');
       setNewBoardTitle('');
       setShowModal(false);
-    } catch (error) {
-      console.error('❌ Error creating board:', error);
-      alert('Failed to create board: ' + error.message);
+    
+    // ####################### BACKEND ##########################
+    } else {
+      try {
+        const response = await api.post('/boards', { title: newBoardTitle });
+        // Dodajem novu ploču na početak liste u UI
+        setBoards([response.data, ...boards]);
+        setNewBoardTitle('');
+        setShowModal(false);
+      } catch (error) {
+        console.error('❌ Error creating board:', error);
+        alert('Failed to create board: ' + error.message);
+      }
     }
   };
 
+  // ####################### DELETE BOARD #########################
   const deleteBoard = async (boardId) => {
     if (!confirm('Are you sure you want to delete this board?')) return;
 
-    try {
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
       console.log('🗑️ Deleting board:', boardId);
       await deleteDoc(doc(db, "boards", boardId));
       console.log('✅ Board deleted');
-    } catch (error) {
-      console.error('❌ Error deleting board:', error);
-      alert('Failed to delete board: ' + error.message);
+    
+    // ####################### BACKEND ##########################
+    } else {
+      try {
+        console.log('🗑️ Deleting board:', boardId);
+        await api.delete(`/boards/${boardId}`);
+        // Mičem ploču iz stanja kako bi nestala s ekrana bez refresha
+        setBoards(boards.filter((b) => b.id !== boardId));
+      } catch (error) {
+        console.error('Error deleting board:', error);
+      }
     }
   };
 
+  // ####################### JOIN BOARD #########################
   const joinRoom = async () => {
     if (!roomCode.trim()) {
       setJoinError('Please enter a room code');
       return;
     }
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      setJoinError('You must be logged in');
-      return;
-    }
-
-    try {
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
       const normalizedCode = roomCode.toUpperCase().trim();
       console.log('🔍 Searching for board with code:', normalizedCode);
-      console.log('Current user:', currentUser.uid);
 
       // Query za board s tim room_code
       const q = query(
@@ -207,13 +256,6 @@ function Dashboard() {
       const boardDoc = querySnapshot.docs[0];
       const boardData = boardDoc.data();
       
-      console.log('✅ Found board:', {
-        id: boardDoc.id,
-        title: boardData.title,
-        owner: boardData.createdBy,
-        currentUser: currentUser.uid
-      });
-      
       // Navigiraj na board
       navigate(`/board/${boardDoc.id}`);
       
@@ -221,33 +263,48 @@ function Dashboard() {
       setRoomCode('');
       setJoinError('');
       setShowJoinModal(false);
-      
-    } catch (error) {
-      console.error('❌ Error joining board:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      
-      // Detaljnija error poruka
-      if (error.code === 'permission-denied') {
-        setJoinError('Permission denied. Please check your Firestore rules.');
-      } else {
-        setJoinError('Failed to join board: ' + error.message);
+    
+    // ####################### BACKEND ##########################
+    } else {
+      try {
+        const response = await api.post('/boards/join', {
+          room_code: roomCode.toUpperCase().trim(),
+        });
+        
+        // Ako kod postoji, navigira korisnika direktno u tu sobu
+        navigate(`/board/${response.data.id}`);
+      } catch (error) {
+        if (error.response?.status === 404) {
+          setJoinError('Board not found');
+        } else if (error.response?.status === 403) {
+          setJoinError('This board is private');
+        } else {
+          setJoinError('Failed to join board');
+        }
+        console.error('Error joining board:', error);
       }
     }
   };
 
+  // ####################### LOGOUT #########################
   const logout = async () => {
-    try {
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
       console.log('👋 Logging out...');
       await signOut(auth);
+
       localStorage.removeItem('user');
       setUser(null);
       setBoards([]);
+
       console.log('✅ Logged out');
       navigate('/login');
-    } catch (error) {
-      console.error('❌ Error signing out:', error);
-      alert('Failed to log out: ' + error.message);
+    
+    // ####################### BACKEND ##########################
+    } else {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/');
     }
   };
 
@@ -262,10 +319,12 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+
+      {/* ####################### NAVBAR DASHBOARDA ######################### */}
       <nav className="bg-white shadow-sm px-6 py-4 flex justify-between items-center">
         <div className="text-2xl font-bold text-gray-900">Whiteboard</div>
         <div className="flex items-center space-x-4">
-          <span className="text-gray-700">Welcome, {user?.name || 'User'}</span>
+          <span className="text-gray-700">Welcome, {user?.name}</span>
           <button
             onClick={logout}
             className="px-4 py-2 text-red-600 hover:text-red-700"
@@ -275,34 +334,36 @@ function Dashboard() {
         </div>
       </nav>
 
+      {/* ####################### GLAVNI SADRŽAJ ############################ */}
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">My Boards</h1>
 
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setShowJoinModal(true)}
-              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-              </svg>
-              <span>Join Room</span>
-            </button>
+          {/* Gumb za Join Room */}
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center space-x-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+            </svg>
+            <span>Join Room</span>
+          </button>
 
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>Create Board</span>
-            </button>
-          </div>
+          {/* Gumb za Create Board */}
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Create Board</span>
+          </button>
         </div>
 
-        {loading || authLoading ? (
+        {/* ####################### RENDERIRANJE PLOČA ######################## */}
+        {loading ? (
           <div className="text-center py-12">
             <div className="text-gray-500">Loading boards...</div>
           </div>
@@ -324,6 +385,7 @@ function Dashboard() {
                   <p className="text-sm text-gray-500">Room Code: {board.room_code}</p>
                 </div>
 
+                {/* Brisanje - pop-up kad se hovera */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -341,6 +403,7 @@ function Dashboard() {
         )}
       </div>
 
+      {/* ####################### MODAL ZA KREIRANJE NOVE PLOČE ####################### */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
@@ -349,21 +412,13 @@ function Dashboard() {
               type="text"
               value={newBoardTitle}
               onChange={(e) => setNewBoardTitle(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  createBoard();
-                }
-              }}
               placeholder="Board title"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4"
               autoFocus
             />
             <div className="flex justify-end space-x-4">
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  setNewBoardTitle('');
-                }}
+                onClick={() => setShowModal(false)}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800"
               >
                 Cancel
@@ -379,6 +434,7 @@ function Dashboard() {
         </div>
       )}
 
+      {/* ####################### MODAL ZA JOIN ############################# */}
       {showJoinModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
@@ -400,11 +456,6 @@ function Dashboard() {
                 onChange={(e) => {
                   setRoomCode(e.target.value);
                   setJoinError('');
-                }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    joinRoom();
-                  }
                 }}
                 placeholder="Enter 8-character code"
                 maxLength={8}

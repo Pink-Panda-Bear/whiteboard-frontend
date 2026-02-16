@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
+
+// ####################### BACKEND ##########################
+import api from '../../services/api';
+import { getEcho } from '../../services/echo';
+
+// ####################### FIREBASE #########################
 import { db } from '../../services/firebase';
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  addDoc, 
-  serverTimestamp,
-  onSnapshot 
-} from 'firebase/firestore';
+import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+
+// ####################### CONFIG ###########################
+import { USE_FIREBASE } from '../../config/apiConfig'
+
 
 function Chat({ boardId, isOpen, onClose }) {
   const [messages, setMessages] = useState([]);
@@ -35,41 +38,87 @@ function Chat({ boardId, isOpen, onClose }) {
     console.log('💬 Setting up messages listener for board:', boardId);
     setLoading(true);
 
-    const messagesColRef = collection(db, 'boards', boardId, 'messages');
-    const q = query(messagesColRef, orderBy('created_at', 'asc'));
+    // ####################### FIREBASE #########################
+    if (USE_FIREBASE) {
+      console.log('💬 Setting up Firebase listener for board:', boardId);
 
-    const unsubscribe = onSnapshot(
-      q,
-      (querySnapshot) => {
-        console.log('📨 Messages updated, count:', querySnapshot.size);
-        
-        const firebaseMessages = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            // Convert Firestore Timestamp to Date if needed
-            created_at: data.created_at?.toDate?.() || new Date()
-          };
+      const messagesColRef = collection(db, 'boards', boardId, 'messages');
+      const q = query(messagesColRef, orderBy('created_at', 'asc'));
+
+      const unsubscribe = onSnapshot(
+        q,
+        (querySnapshot) => {
+          console.log('📨 Messages updated, count:', querySnapshot.size);
+          
+          const firebaseMessages = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              // Convert Firestore Timestamp to Date if needed
+              created_at: data.created_at?.toDate?.() || new Date()
+            };
+          });
+
+          setMessages(firebaseMessages);
+          setLoading(false);
+          
+          // Auto-scroll to bottom after messages load
+          setTimeout(scrollToBottom, 100);
+        },
+        (error) => {
+          console.error('❌ Messages listener error:', error);
+          setLoading(false);
+        }
+      );
+
+      // Cleanup listener
+      return () => {
+        console.log('🔇 Cleaning up messages listener');
+        unsubscribe();
+      };
+    
+    // ####################### BACKEND ##########################
+    } else {
+      let timeoutId;
+      let channel;
+
+      const fetchMessages = async () => {
+        try {
+          const response = await api.get(`/boards/${boardId}/messages`);
+          setMessages(response.data.reverse() || []);
+          scrollToBottom();
+        } catch (error) {
+          console.error('❌ Error fetching messages:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const setupSocket = () => {
+        const echo = getEcho();
+        if (!echo) {
+          timeoutId = setTimeout(setupSocket, 500);
+          return;
+        }
+        channel = echo.channel(`board.${boardId}`);
+        channel.listen('.message.sent', (e) => {
+          setMessages((prev) => {
+            if (prev.some(m => m.id === e.message.id)) return prev;
+            return [...prev, e.message];
+          });
+          scrollToBottom();
         });
+      };
 
-        setMessages(firebaseMessages);
-        setLoading(false);
-        
-        // Auto-scroll to bottom after messages load
-        setTimeout(scrollToBottom, 100);
-      },
-      (error) => {
-        console.error('❌ Messages listener error:', error);
-        setLoading(false);
-      }
-    );
+      fetchMessages();
+      setupSocket();
 
-    // Cleanup listener
-    return () => {
-      console.log('🔇 Cleaning up messages listener');
-      unsubscribe();
-    };
+      return () => {
+        if (channel) channel.stopListening('.message.sent');
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }
   }, [boardId, isOpen]);
 
   // Auto-scroll when messages change
@@ -84,30 +133,38 @@ function Chat({ boardId, isOpen, onClose }) {
   // Send message to Firebase
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
-    if (!user) {
-      alert('You must be logged in to send messages');
-      return;
-    }
+    if (!user) return alert('You must be logged in to send messages');
 
     const messageContent = newMessage.trim();
     setNewMessage('');
 
     try {
-      console.log('📤 Sending message:', messageContent);
+      // ####################### FIREBASE #########################
+      if (USE_FIREBASE) {
+        console.log('📤 Sending message:', messageContent);
 
-      const messagesColRef = collection(db, 'boards', boardId, 'messages');
-      
-      await addDoc(messagesColRef, {
-        message: messageContent,
-        user_id: user.uid,
-        user: { 
-          name: user.name || user.email?.split('@')[0] || 'User' 
-        },
-        created_at: serverTimestamp()
-      });
+        const messagesColRef = collection(db, 'boards', boardId, 'messages');
+        
+        await addDoc(messagesColRef, {
+          message: messageContent,
+          user_id: user.uid,
+          user: { 
+            name: user.name || user.email?.split('@')[0] || 'User' 
+          },
+          created_at: serverTimestamp()
+        });
 
-      console.log('✅ Message sent');
-      
+        console.log('✅ Message sent');
+
+      // ####################### BACKEND ##########################
+      } else {
+        const response = await api.post(`/boards/${boardId}/messages`, { message: messageContent });
+        setMessages((prev) => {
+          const exists = prev.find(m => m.id === response.data.id);
+          return exists ? prev : [...prev, response.data];
+        });
+      }
+
       // Scroll to bottom after sending
       setTimeout(scrollToBottom, 100);
     } catch (error) {
@@ -123,6 +180,7 @@ function Chat({ boardId, isOpen, onClose }) {
       {/* Header */}
       <div className="bg-white border-b px-5 py-4 flex justify-between items-center">
         <div className="flex items-center space-x-3">
+          {/* Pulsirajući zeleni krug označava da je chat "online" */}
           <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
           <h3 className="font-bold text-gray-800 text-lg">Team Chat</h3>
         </div>
@@ -146,39 +204,37 @@ function Chat({ boardId, isOpen, onClose }) {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-60">
             <div className="bg-gray-200 p-4 rounded-full">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
             <p className="text-gray-500 font-medium">No messages yet</p>
-            <p className="text-gray-400 text-sm">Start the conversation!</p>
           </div>
         ) : (
+
+          // Mapiranje kroz niz poruka (prikaz text bubble-a)
           messages.map((message, index) => {
-            const isOwnMessage = message.user_id === user?.uid;
+            const isOwnMessage = message.user_id === user?.id;
             return (
-              <div 
-                key={message.id || index} 
-                className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={message.id || index} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                  {/* Prikazujem ime korisnika samo ako poruka nije moja */}
                   {!isOwnMessage && (
                     <span className="text-[11px] font-semibold text-gray-500 ml-2 mb-1 uppercase tracking-wider">
                       {message.user?.name || 'User'}
                     </span>
                   )}
+                  {/* Stil teyt bubble-a ovisi o tome tko šalje (plavo desno, bijelo lijevo). */}
                   <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm ${
                     isOwnMessage 
                       ? 'bg-blue-600 text-white rounded-tr-none' 
                       : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
                   }`}>
-                    <p className="leading-relaxed break-words">{message.message}</p>
+                    <p className="leading-relaxed">{message.message}</p>
                   </div>
+                  {/* Vrijeme slanja formatirano u 24h format. */}
                   <span className="text-[10px] text-gray-400 mt-1 px-1">
-                    {message.created_at instanceof Date 
-                      ? message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    }
+                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>
@@ -216,10 +272,10 @@ function Chat({ boardId, isOpen, onClose }) {
           </button>
         </div>
         <div className="flex justify-between mt-2 px-1">
-          <span className="text-[10px] text-gray-400">Shift + Enter for new line</span>
-          <span className={`text-[10px] ${newMessage.length > 450 ? 'text-red-400' : 'text-gray-400'}`}>
-            {newMessage.length}/500
-          </span>
+            <span className="text-[10px] text-gray-400">Shift + Enter for new line</span>
+            <span className={`text-[10px] ${newMessage.length > 450 ? 'text-red-400' : 'text-gray-400'}`}>
+              {newMessage.length}/500
+            </span>
         </div>
       </div>
     </div>

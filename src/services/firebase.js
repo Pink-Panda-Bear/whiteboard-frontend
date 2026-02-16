@@ -4,7 +4,11 @@ import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Tvoj Firebase config
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -21,5 +25,4 @@ const analytics = getAnalytics(app);
 const auth = getAuth(app); // ovo ti treba za login/registraciju
 const db = getFirestore(app); // ovo ti treba za chat/boards
 
-// Exportaj auth i db da ih koristiš u komponentama
 export { app, auth, db };

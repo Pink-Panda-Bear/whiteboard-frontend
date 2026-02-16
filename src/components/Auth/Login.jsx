@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
-// ####################### ORIGINALNI BACKEND #########################
-// import api from '../../services/api';
+// ####################### BACKEND ##########################
+import api from '../../services/api';
 
 // ####################### FIREBASE #########################
 import { auth } from '../../services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+
+// ####################### CONFIG ###########################
+import { USE_FIREBASE } from '../../config/apiConfig';
+
 
 function Login() {
   // Inicijaliziram navigaciju za preusmjeravanje nakon uspješnog logina
@@ -29,31 +33,37 @@ function Login() {
     setLoading(true);       // spinner za učitavanje stranice
 
     try {
-      // ####################### ORIGINALNI BACKEND #########################
-      // Šaljem POST zahtjev na backend endpoint '/login'
-      // const response = await api.post('/login', formData);
-
-      // Spremam dobiveni Bearer token i podatke o useru u LocalStorage preglednika
-      // To omogućuje da korisnik ostane prijavljen i nakon refresha
-      // localStorage.setItem('token', response.data.token);
-      // localStorage.setItem('user', JSON.stringify(response.data.user));
-
-
       // ####################### FIREBASE #########################
-      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
+      if (USE_FIREBASE) {
+        const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        const user = userCredential.user;
+        
+        localStorage.setItem('user', JSON.stringify({ uid: user.uid, email: user.email }));
+        console.log("Logged in via Firebase:", user.email);
+      
+      // ####################### BACKEND ##########################
+      } else {
+        // Šaljem POST zahtjev na backend endpoint '/login'
+        const response = await api.post('/login', formData);
 
-      console.log("Logged in:", user.email);
-      localStorage.setItem('user', JSON.stringify({ uid: user.uid, email: user.email }));
-
+        // Spremam dobiveni Bearer token i podatke o useru u LocalStorage preglednika
+        // To omogućuje da korisnik ostane prijavljen i nakon refresha
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        console.log("Logged in via Backend:", response.data.user.email);
+      }
+      
       // Šaljem korisnika na glavnu radnu površinu (Dashboard.jsx)
       navigate('/dashboard');
     } catch (err) {
-      // ####################### ORIGINALNI BACKEND #########################
-      // setError(err.response?.data?.message || 'Login failed');
-
       // ####################### FIREBASE #########################
-      setError(err.message || 'Login failed');
+      if (USE_FIREBASE) {
+        setError(err.message || 'Login failed.');
+      
+      // ####################### BACKEND ##########################
+      } else {
+        setError(err.response?.data?.message || 'Login failed');
+      }
     } finally {
       setLoading(false);
     }

@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
-// ####################### ORIGINALNI BACKEND #########################
-// import api from '../../services/api';
+// ####################### BACKEND ##########################
+import api from '../../services/api';
 
 // ####################### FIREBASE #########################
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebase';
+
+// ####################### CONFIG ###########################
+import { USE_FIREBASE } from '../../config/apiConfig';
+
 
 function Register() {
   // Hook za preusmjeravanje korisnika nakon uspješne registracije
@@ -33,36 +37,47 @@ function Register() {
     setLoading(true);       // aktiviram loading animaciju
 
     try {
-      // ####################### ORIGINALNI BACKEND #########################
-      // Šaljem POST zahtjev na '/register' rutu API-ja
-      // const response = await api.post('/register', formData);
-
-      // Ako je registracija uspjela, odmah sprema token i podatke o useru
-      // localStorage.setItem('token', response.data.token);
-      // localStorage.setItem('user', JSON.stringify(response.data.user));
-
-      // ####################### FIREBASE #########################
       if (formData.password !== formData.password_confirmation) {
         throw new Error("Passwords do not match.");
       }
 
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
+      // ####################### FIREBASE #########################
+      if (USE_FIREBASE) {
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          formData.email,
+          formData.password
+        );
+        const user = userCredential.user;
 
-      localStorage.setItem('user', JSON.stringify({ uid: user.uid, email: user.email, name: formData.name }));
+        localStorage.setItem('user', JSON.stringify({ uid: user.uid, email: user.email, name: formData.name }));
+        console.log("Registered via Firebase:", user.email);
+      
+      // ####################### BACKEND ##########################
+      } else {
+        // Šaljem POST zahtjev na '/register' rutu API-ja
+        const response = await api.post('/register', formData);
+
+        // Ako je registracija uspjela, odmah sprema token i podatke o useru
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        console.log("Registered via Backend:", response.data.user.email);
+      }
 
       // Šaljem novog korisnika direktno na Dashboard.jsx
       navigate('/dashboard');
     } catch (err) {
-      // ####################### ORIGINALNI BACKEND #########################
-      // if (err.response?.data?.errors) {
-      //   setErrors(err.response.data.errors);
-      //  } else {
-      //    setErrors({ general: err.response?.data?.message || 'Registration failed' });
-      //  }
-
       // ####################### FIREBASE #########################
-      setErrors({ general: err.message || 'Registration failed' });
+      if (USE_FIREBASE) {
+        setErrors({ general: err.message || 'Registration failed' });
+      
+      // ####################### BACKEND ##########################
+      } else if (err.response?.data?.errors) {
+        setErrors(err.response.data.errors);
+      } else {
+        setErrors({ general: err.response?.data?.message || 'Registration failed' });
+      }
+      
     } finally {
       setLoading(false);
     }
