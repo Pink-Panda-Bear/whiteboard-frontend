@@ -3,7 +3,7 @@
 // ######
 const hostname = window.location.hostname;
 export const IS_LOCAL = hostname === 'localhost' || hostname === '127.0.0.1';
-export const IS_AZURE = hostname.includes('azurewebsites.net');
+export const IS_AZURE = hostname.includes('azurestaticapps.net');
 export const IS_AWS = hostname.includes('amazonaws.com'); // Spremno za kasnije
 
 // ######
