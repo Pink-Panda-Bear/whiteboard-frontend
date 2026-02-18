@@ -19,7 +19,7 @@ export const USE_FIREBASE = false;
 const URLS = {
     LOCAL: 'http://localhost:8000/api',
     AZURE: 'https://whiteboard-backend-dpg3g0asfrhqgxg5.westeurope-01.azurewebsites.net/api',
-    AWS: 'https://tvoj-aws-url.com/api' // Ovdje ćeš upisati AWS kasnije
+    AWS: 'http://whiteboard-production.eba-uti7h2qf.eu-north-1.elasticbeanstalk.com/'
 };
 
 // Određivanje baze URL-a ovisno o tome gdje je aplikacija pokrenuta
