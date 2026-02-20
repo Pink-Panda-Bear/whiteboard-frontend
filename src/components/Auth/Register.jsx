@@ -9,7 +9,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebase';
 
 // ####################### CONFIG ###########################
-import { USE_FIREBASE } from '../../config/apiConfig';
+import { USE_FIREBASE, API_BASE_URL } from '../../config/apiConfig';
 
 
 function Register() {

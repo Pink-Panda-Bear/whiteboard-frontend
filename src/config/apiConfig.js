@@ -4,7 +4,7 @@
 const hostname = window.location.hostname;
 export const IS_LOCAL = hostname === 'localhost' || hostname === '127.0.0.1';
 export const IS_AZURE = hostname.includes('azurestaticapps.net');
-export const IS_AWS = hostname.includes('amazonaws.com'); // Spremno za kasnije
+export const IS_AWS = hostname.includes('amazonaws.com');
 
 console.log('HOSTNAME:', hostname);
 console.log('IS_AWS:', IS_AWS);
@@ -29,7 +29,7 @@ const URLS = {
 // Određivanje baze URL-a ovisno o tome gdje je aplikacija pokrenuta
 let selectedUrl = URLS.LOCAL; // Default
 if (IS_AZURE) selectedUrl = URLS.AZURE;
-if (IS_AWS) selectedUrl = URLS.AWS;
+else if (IS_AWS) selectedUrl = URLS.AWS;
 
 console.log('SELECTED URL:', selectedUrl);
 

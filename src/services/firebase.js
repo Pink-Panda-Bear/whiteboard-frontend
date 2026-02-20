@@ -22,7 +22,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
-const auth = getAuth(app); // ovo ti treba za login/registraciju
-const db = getFirestore(app); // ovo ti treba za chat/boards
+const auth = getAuth(app); // ovo treba za login/registraciju
+const db = getFirestore(app); // ovo treba za chat/boards
 
 export { app, auth, db };

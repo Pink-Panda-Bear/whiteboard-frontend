@@ -9,7 +9,7 @@ import { auth } from '../../services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
 // ####################### CONFIG ###########################
-import { USE_FIREBASE } from '../../config/apiConfig';
+import { USE_FIREBASE, API_BASE_URL } from '../../config/apiConfig';
 
 
 function Login() {

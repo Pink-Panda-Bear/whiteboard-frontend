@@ -9,7 +9,7 @@ import { db } from '../../services/firebase';
 import { collection, query, orderBy, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 
 // ####################### CONFIG ###########################
-import { USE_FIREBASE } from '../../config/apiConfig'
+import { USE_FIREBASE, API_BASE_URL } from '../../config/apiConfig'
 
 
 function Chat({ boardId, isOpen, onClose }) {

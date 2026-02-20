@@ -10,7 +10,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { collection, addDoc, deleteDoc, doc, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 
 // ####################### CONFIG ###########################
-import { USE_FIREBASE } from '../../config/apiConfig';
+import { USE_FIREBASE, API_BASE_URL } from '../../config/apiConfig';
 
 
 function Dashboard() {
