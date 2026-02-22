@@ -202,12 +202,6 @@ function Whiteboard() {
       console.error('❌ "auth" is not defined. Did you forget to import it at the top of Whiteboard.jsx?');
       return;
     }
-    
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      console.error('❌ No authenticated user found. Cannot save stroke.');
-      return;
-    }
 
     // Generiram privremeni ID kako bi se ta linija vidjela odmah (bez čekanja servera)
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -225,6 +219,12 @@ function Whiteboard() {
     try {
       // ####################### FIREBASE #########################
       if (USE_FIREBASE) {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.error('❌ No authenticated user found. Cannot save stroke.');
+          return;
+        }
+
         const strokesColRef = collection(db, 'boards', boardId, 'strokes');
         const docRef = await addDoc(strokesColRef, {
           ...strokeData,
